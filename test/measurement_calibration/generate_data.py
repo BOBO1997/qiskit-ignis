@@ -106,11 +106,19 @@ def meas_calibration_circ_execution(shots: int, seed: int):
 
     # run the circuits multiple times
     backend = qiskit.Aer.get_backend('qasm_simulator')
-    cal_results = qiskit.execute(meas_calibs, backend=backend, shots=shots, noise_model=noise_model,
-                                 seed_simulator=seed).result()
+    cal_results = qiskit.execute(meas_calibs, 
+                                 backend=backend, 
+                                 shots=shots, 
+                                 noise_model=noise_model,
+                                 seed_simulator=seed,
+                                 seed_transpiler=seed).result()
 
-    ghz_results = qiskit.execute(ghz, backend=backend, shots=shots, noise_model=noise_model,
-                                 seed_simulator=seed).result().get_counts()
+    ghz_results = qiskit.execute(ghz, 
+                                 backend=backend, 
+                                 shots=shots, 
+                                 noise_model=noise_model,
+                                 seed_simulator=seed,
+                                 seed_transpiler=seed).result().get_counts()
 
     return cal_results, state_labels, ghz_results
 
@@ -137,11 +145,19 @@ def tensored_calib_circ_execution(shots: int, seed: int):
 
     # run the circuits multiple times
     backend = qiskit.Aer.get_backend('qasm_simulator')
-    cal_results = qiskit.execute(meas_calibs, backend=backend, shots=shots, noise_model=noise_model,
-                                 seed_simulator=seed).result()
+    cal_results = qiskit.execute(meas_calibs, 
+                                 backend=backend, 
+                                 shots=shots, 
+                                 noise_model=noise_model,
+                                 seed_simulator=seed,
+                                 seed_transpiler=seed).result()
 
-    ghz_results = qiskit.execute(ghz_circ, backend=backend, shots=shots, noise_model=noise_model,
-                                 seed_simulator=seed).result()
+    ghz_results = qiskit.execute(ghz_circ, 
+                                 backend=backend, 
+                                 shots=shots, 
+                                 noise_model=noise_model,
+                                 seed_simulator=seed,
+                                 seed_transpiler=seed).result()
 
     return cal_results, mit_pattern, ghz_results, meas_layout
 
@@ -192,6 +208,7 @@ def generate_tensormeas_calibration(results_file_path: str):
         cal_results - the results of the measurement calibration circuit
         results - results of a GHZ state circuit with noise
         mit_pattern - the mitigation pattern
+        meas_layout - the measurement layout
         fidelity - the calculated fidelity of using this matrix
         results_pseudo_inverse - the result of using the psedo-inverse method on the GHZ state
         results_least_square - the result of using the least-squares method on the GHZ state

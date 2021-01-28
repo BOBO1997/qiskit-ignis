@@ -188,7 +188,8 @@ class TestMeasCal(unittest.TestCase):
 
         # Run the calibration circuits
         backend = Aer.get_backend('qasm_simulator')
-        job = qiskit.execute(meas_calibs, backend=backend,
+        job = qiskit.execute(meas_calibs, 
+                             backend=backend,
                              shots=self.shots,
                              seed_simulator=SEED,
                              seed_transpiler=SEED)
@@ -199,7 +200,8 @@ class TestMeasCal(unittest.TestCase):
         # Calculate the fidelity
         fidelity = meas_cal.readout_fidelity()
 
-        job = qiskit.execute([ghz], backend=backend,
+        job = qiskit.execute([ghz], 
+                             backend=backend,
                              shots=self.shots,
                              seed_simulator=SEED,
                              seed_transpiler=SEED)
@@ -354,7 +356,8 @@ class TestMeasCal(unittest.TestCase):
 
         # Run the calibration circuits
         backend = Aer.get_backend('qasm_simulator')
-        cal_results = qiskit.execute(meas_calibs, backend=backend,
+        cal_results = qiskit.execute(meas_calibs, 
+                                     backend=backend,
                                      shots=self.shots,
                                      seed_simulator=SEED,
                                      seed_transpiler=SEED).result()
@@ -365,7 +368,8 @@ class TestMeasCal(unittest.TestCase):
         # Calculate the fidelity
         fidelity = meas_cal.readout_fidelity(0)*meas_cal.readout_fidelity(1)
 
-        results = qiskit.execute([ghz], backend=backend,
+        results = qiskit.execute([ghz], 
+                                 backend=backend,
                                  shots=self.shots,
                                  seed_simulator=SEED,
                                  seed_transpiler=SEED).result()
