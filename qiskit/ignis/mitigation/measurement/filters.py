@@ -257,7 +257,7 @@ class TensoredFilter():
         """Return _substate_labels_list"""
         return self._substate_labels_list
 
-    @substate_labels_list.setter
+    # @substate_labels_list.setter
     def substate_labels_list(self, new_substate_labels_list):
         """Return _substate_labels_list"""
         self._substate_labels_list = new_substate_labels_list
@@ -288,7 +288,8 @@ class TensoredFilter():
     def apply(self,
               raw_data: Union[qiskit.result.result.Result, dict],
               method: str = 'least_squares',
-              meas_layout: List[int] = None):
+              meas_layout: List[int] = None,
+              threshold: float = 0.1):
         """
         Apply the calibration matrices to results.
 
@@ -328,6 +329,18 @@ class TensoredFilter():
             for qubits in self._mit_pattern:
                 meas_layout += qubits
 
+        meas_layout = meas_layout[::-1]  # reverse endian
+        qubits_to_clbits = [-1 for _ in range(max(meas_layout) + 1)]
+        for i, qubit in enumerate(meas_layout):
+            qubits_to_clbits[qubit] = i
+
+        if method == 'fast':
+            new_counts = self.fast_tensored_mitigation(counts=raw_data,
+                                                       meas_layout=meas_layout,
+                                                       qubits_to_clbits=qubits_to_clbits,
+                                                       threshold=threshold)
+            return new_counts
+
         # check forms of raw_data
         if isinstance(raw_data, dict):
             # counts dictionary
@@ -360,11 +373,6 @@ class TensoredFilter():
             pinv_cal_matrices = []
             for cal_mat in self._cal_matrices:
                 pinv_cal_matrices.append(la.pinv(cal_mat))
-
-        meas_layout = meas_layout[::-1]  # reverse endian
-        qubits_to_clbits = [-1 for _ in range(max(meas_layout) + 1)]
-        for i, qubit in enumerate(meas_layout):
-            qubits_to_clbits[qubit] = i
 
         # Apply the correction
         for data_idx, _ in enumerate(raw_data2):
@@ -403,7 +411,7 @@ class TensoredFilter():
                 x0 = x0 / sum(x0)
                 nshots = sum(raw_data2[data_idx])
                 cons = ({'type': 'eq', 'fun': lambda x: nshots - sum(x)})
-                bnds = tuple((0, nshots) for x in x0)
+                bnds = tuple((0, nshots) for _ in x0)
                 res = minimize(fun, x0, method='SLSQP',
                                constraints=cons, bounds=bnds, tol=1e-6)
                 raw_data2[data_idx] = res.x
@@ -435,6 +443,7 @@ class TensoredFilter():
     def compute_index_of_cal_mat(self, state: str, pos_qubits: List[int]) -> int:
         """Return the index of (pseudo inverse) calibration matrix for the input quantum state"""
         sub_state = ""
+        # print(state)
         for pos in pos_qubits:
             sub_state += state[pos]
         return int(sub_state, 2)
@@ -448,3 +457,91 @@ class TensoredFilter():
         new_counts = self.apply(
             raw_data.get_counts(resultidx), method=method, meas_layout=meas_layout)
         return resultidx, new_counts
+
+    def fast_tensored_mitigation(self,
+                                 counts: dict,
+                                 meas_layout: List[int],
+                                 qubits_to_clbits: List[int],
+                                 # num_states: int,
+                                 threshold: float) -> dict:
+
+        nshots = sum(counts.values())
+
+        # print(counts, len(counts))
+        # print(len(counts))
+
+        pinv_cal_matrices = []
+        for cal_mat in self._cal_matrices:
+            pinv_cal_matrices.append(la.pinv(cal_mat))
+
+        sum_negative = 0
+
+        # do_optim = False
+        for pinv_cal_mat, pos_qubits in zip(pinv_cal_matrices, self._mit_pattern):
+            updated_counts = dict() # dict(zip(counts.keys(), [0] * len(counts.keys())))
+            pos_clbits = [qubits_to_clbits[qubit] for qubit in pos_qubits]
+            for state, count in counts.items():
+                # print(state, type(state))
+                first_index = self.compute_index_of_cal_mat(state, pos_clbits)
+                sum_of_count = 0
+                for i in range(len(pinv_cal_mat)):  # i is index of pinv_cal_mat
+                    source_state = self.flip_state(state, i, pos_clbits)
+                    if not source_state in counts:
+                        continue
+                    second_index = self.compute_index_of_cal_mat(source_state, pos_clbits)
+                    sum_of_count += pinv_cal_mat[first_index, second_index] * counts[source_state]
+                if abs(sum_of_count) >= threshold: # sum_of_count / nshots > threshold:
+                    if sum_of_count < 0:
+                        # do_optim = True
+                        sum_negative += - sum_of_count
+                    updated_counts[state] = sum_of_count
+            counts = updated_counts
+            # print(counts)
+            # print(len(counts))
+        # print()
+
+        updated_counts = dict()
+        for key, value in counts.items():
+            if value >= 0:
+                updated_counts[key] = value
+
+        sum_of_counts = sum(updated_counts.values())
+
+        for key, value in updated_counts.items():
+            if value >= 0:
+                updated_counts[key] -= sum_negative * value / sum_of_counts
+
+        sum_of_counts = sum(updated_counts.values())
+        for key, value in updated_counts.items():
+            updated_counts[key] = value * (nshots / sum_of_counts)
+        
+        return updated_counts
+
+        # if do_optim:
+        if False:
+            numpy_counts = np.array(list(counts.values()), dtype=float)
+            def fun(x):
+                return sum((numpy_counts - x) ** 2)
+            
+            from pprint import pprint
+            # print("numpy_counts")
+            # pprint(numpy_counts.tolist())
+            x0 = np.fmax(numpy_counts, 0)
+            # x0 = x0 / sum(x0)
+            # pprint(x0.tolist())
+            cons = ({'type': 'eq', 'fun': lambda x: nshots - sum(x)})
+            bnds = tuple((0, nshots) for _ in counts)
+            # print(x0, len(x0))
+            # print(bnds, len(bnds))
+            # print(numpy_counts, len(numpy_counts))
+            # print(counts, len(counts))
+            # print(len(x0), len(bnds), len(numpy_counts), len(counts))
+            # print("diff: ", fun(x0))
+            res = minimize(fun, x0, method='SLSQP', constraints=cons, bounds=bnds, tol=100)
+            
+            # pprint(res.x.tolist())
+
+            for i, key in enumerate(counts):
+                counts[key] = res.x[i]
+
+        return counts
